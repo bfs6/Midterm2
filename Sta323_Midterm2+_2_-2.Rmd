@@ -1,0 +1,263 @@
+---
+title: "Sta 323 - Midterm 2 - Spring 2016"
+output: rmarkdown::html_document
+author: Basil Seif
+runtime: shiny
+---
+
+<br/><br/>
+
+### Rules
+
+1. Your solutions must be written up using this R Markdown (Rmd) file, this file must include your code and write up for each task.
+
+2. This exam is open book, open internet, closed other people. You may use *any* online or book based resource you would like, but you must include citations for any code that you use (directly or indirectly). You *may not* consult with anyone else about this exam other than the Professor or TAs for this course - this includes posting anything online.
+
+3. You have until 11 pm on Thursday, April 7th to complete this exam and turn it in via the Sakai assignments tool - late work will not be accepted. You should only submit this Rmd file and nothing else. Resubmissions are allowed, but only your last submission (before the deadline) will be graded. Technical difficulties are not an excuse for late work - do not wait until the last minute to upload.
+
+4. All of your answers must include a brief description / writeup of your approach. This includes both annotating / commenting your code *and* a separate written descriptions of all code / implementations. I should be able to suppress *all* code output in your document and still be able to read and make sense of your answers.
+
+5. The most important goal is to write code that can accomplish the given tasks, note however that grading will at least be partially based on the quality of the code you write - elegant, efficient code will be rewarded and messy, slow code will be penalized.
+
+<br/>
+
+### Shiny Weather
+
+Dark Sky and Forecast.io are an iOS and a website, run by the same company, that provide "hyperlocal" weather forecasts. They make their data available to third parties via a web API which we will be using to create a simple shiny app. 
+
+In order to access this API you need an account - if you go to https://developer.forecast.io/ you can sign up for an account using the Register button in the top right corner. Once you have registered you will have access to a usage dashboard that includes a unique API key (the long alphanumeric string at the bottom of the page). You can make 1000 API requests per day without incurring any cost, so there is no need to enter any billing information.
+
+
+#### Task 1 - forecast.io API (20 pts)
+
+To complete this task you will write a single function called `forecast` that accepts an API key, longitude, and latitude and returns a data frame containing the *hourly* forecast for the given location. The Dark Sky forecast API provides a number of different weather related predictions at minute, hour, and daily scales. You should return all of the hourly (and only the hourly) predictions. All of these quantities (include time) should be properly formated and have the correct type.
+
+When querying the API, the returned values will be formated as JSON, you are allowed to use any package you would like to handle this data or write your own code to do the parsing. Note that the efficiency and elegance of your solution will count for your grade.
+
+#### Solution
+
+Task 1
+
+For the Task 1 code, I made a forecast function that took in an API key, a latitude, and a longitude that returns a data frame of all of the hourly weather data from the Forecast.io website for the input location. I did that by first making a template of each specific URL, given the api key, latitude and longitude. Then, I used the jsonlite library (a JSON parser) to convert all of the data from JSON data to R data. Then, I used the function as.data.frame(weather$hourly) to specifically put ONLY the hourly weather data into a dataframe.  
+
+```{r}
+library(xml2)
+library(rvest)
+library(jsonlite)
+require(jsonlite)
+
+
+forecast = function(api_key = "bf58d119cf39e2aee063347ad34c45c5", latitude, longitude)
+{
+  #make template for each specific URL
+  json_url = paste0("https://api.forecast.io/forecast/", api_key, "/",
+                    latitude, ",", longitude)
+  
+  #convert JSON data into R data
+  weather <- fromJSON(json_url)
+  hourlyWeather <- as.data.frame(weather$hourly)
+  
+  #change time to readable format
+  hourlyWeather$data.time <- as.POSIXct(hourlyWeather$data.time, origin = "1970-01-01")
+  return(hourlyWeather)
+}
+```
+
+
+
+<br/>
+
+#### Task 2 - Shiny Predictions (30 pts)
+
+You will embedded a shiny app in this RMarkdown document, the scaffolding code for the app is provided below. You can find out more about the style of shiny app [here](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+Your Shiny App should allow the user to select a city from a list and provide a visualization of the hourly weather forecast for that location. Your visualization should always include the temperature, but also allow the user to select a second quantity (e.g. precipitation chance, barometric pressure, etc.) to optionally display *on the same plot* - this must also include appropriate axes and a legend. The names of the extra forecast variable should be determined programmatically (not hard coded) from the API results and it should also include `None` as the default option which will only plot temperature.
+
+The list of possible citiess should be created by scraping the following wikipedia pages: [https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_A-H], [https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_I-P], and [https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_Q-Z]. This data should be regenerated each time this document is compiled.
+
+
+Extra credit will be given is you allow the user to first filter cities by country. 
+
+#### Solution
+
+Task 2
+
+The first thing I did in this task was to scrape the names of cities, countries, and their latitudes and longitudes from the three Wikipedia pages given. I made a data frame for each individual website with four columns that had all of the aforementioned information. At the end, I combined all three of the dataframes into one big dataframe. 
+
+In making each individual dataframe, I downloaded the rvest and magrittr libraries in order to be able convert the HTML to something recognizable in R. I used Selector Gadget to figure out what to put into each html_nodes() argument. I also changed the latitudes and longitudes from degrees to radians. I did so by using strsplit to divide the inputs into a data frame with everything before the degree sign as the first column and everything after as the second column. After that, I divided the second column by 60 and then mulitplied by 1 or -1 based on what the directions of the coordinates were.
+
+In the second part of Part 2, I created the Shiny App. First, in the UI, I used selectInput in order to create the drop down menu with all of the countries. At first, I tried to use conditionalPanel's in order to make the cities and second variable inputs dependenent on the country selected. For some reason, it just was not working. Eventually, I stumbled upon an article (http://shiny.rstudio.com/reference/shiny/latest/renderUI.html) about renderUI, which pointed me in the right direction. In the last part of the UI, I set up the cities and other weather variables as output, in order to use renderUI in the server.
+
+In the server, I made the pickCities() funtion that makes a list of all of the cities belonging to the input country. Then, I used renderUI to make the selectInput drop down menu for cities, so that it relies on the input country. Then, I wrote the function get_ll(), a reactive function that returned an updated version of the forecast function, with latitude and longitude coordinates from the input city. I then sed renderUI to make the selectInput drop down menu for other weather variables, so that it relied on the input city and the dataframe returned in getll(). Finally, I defined output$plot in order to create the plots. I used an if statement to make sure that if the user picked "None" for the second variable, then the plot would only be of the weather given the time. I managed to find out a way to make a second y axis to the right of the plot, using the code found on this website: http://www.r-bloggers.com/r-single-plot-with-two-different-y-axes/. 
+
+
+```{r}
+## Load any packages 
+library(shiny)
+library(rvest)
+library(magrittr)
+library(shiny)
+library(dplyr)
+
+## City Scraping code
+
+#convert from HTML to R
+page1 = read_html("https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_A-H")
+
+#Make 1st data frame 
+df_AH = data.frame(
+  cities = page1 %>% html_nodes("td:nth-child(2)") %>% html_text(trim = TRUE),
+  countries = page1 %>% html_nodes("td:nth-child(1)") %>% html_text(trim = TRUE),
+  latitude = page1 %>% html_nodes(".latitude") %>% html_text(trim = TRUE),
+  longitude = page1 %>% html_nodes(".longitude") %>% html_text(trim = TRUE),
+  stringsAsFactors = FALSE
+)
+
+#Make 2nd data frame
+page2 = read_html("https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_I-P")
+df_IP = data.frame(
+  cities = page2 %>% html_nodes("td:nth-child(2)") %>% html_text(trim = TRUE),
+  countries = page2 %>% html_nodes("td:nth-child(1)") %>% html_text(trim = TRUE),
+  latitude = page2 %>% html_nodes(".latitude") %>% html_text(trim = TRUE),
+  longitude = page2 %>% html_nodes(".longitude") %>% html_text(trim = TRUE),
+  stringsAsFactors = FALSE
+)
+
+#Make 3rd data frame
+page3 = read_html("https://en.wikipedia.org/wiki/Latitude_and_longitude_of_cities,_Q-Z")
+df_QZ = data.frame(
+  cities = page3 %>% html_nodes("td:nth-child(2)") %>% html_text(trim = TRUE),
+  countries = page3 %>% html_nodes("td:nth-child(1)") %>% html_text(trim = TRUE),
+  latitude = page3 %>% html_nodes(".latitude") %>% html_text(trim = TRUE),
+  longitude = page3 %>% html_nodes(".longitude") %>% html_text(trim = TRUE),
+  stringsAsFactors = FALSE
+)
+
+#Combine all three data frames
+df = rbind(df_AH, df_IP, df_QZ)
+df = df[with(df, order(cities)), ]
+rownames(df) <- 1:nrow(df)
+
+#Change the latitudes from degrees to radians
+lat <- do.call(rbind, strsplit(as.character(df$latitude), "°"))
+l <- do.call(rbind, strsplit(as.character(lat[, 2]), "′"))
+lat <- cbind(lat[,1], l)
+for(i in 1:length(lat[,3])){
+  if(lat[i,3] == "S"){
+    lat[i,3] = -1
+  }else{
+    lat[i,3] = 1
+  }
+}
+latitude <- (as.numeric(lat[,1]) + as.numeric(lat[,2])/60) * as.numeric(lat[,3])
+df$latitude <- as.character(latitude)
+
+#Change the longitudes from degrees to radians
+long <- do.call(rbind, strsplit(as.character(df$longitude), "°"))
+lo <- do.call(rbind, strsplit(as.character(long[, 2]), "′"))
+long <- cbind(long[,1], lo)
+for(i in 1:length(long[,3])){
+  if(long[i,3] == "W"){
+    long[i,3] = -1
+  }else{
+    long[i,3] = 1
+  }
+}
+longitude <- (as.numeric(long[,1]) + as.numeric(long[,2])/60) * as.numeric(long[,3])
+df$longitude <- as.character(longitude)
+
+
+## App
+
+shinyApp(ui =fluidPage(
+  titlePanel("Hourly Weather"),
+  sidebarPanel(
+    h4("Location"),
+    
+    #Create select input for all of the countries
+    selectInput("country", label = h3("Country"),
+                choices = sort(df$countries),
+                selected = "Angola"),
+    
+    #Set up the cities and other weather variables as output, in order to use renderUI in the server
+    uiOutput("cities"),
+    uiOutput("weather_res")
+  ),
+  
+  #Create main panel for eventual plots
+  mainPanel(
+    h4("Weather Results:"),
+    plotOutput("plot"),
+    br()
+  )
+),
+
+
+
+server = function(input, output) {
+  
+  #function that makes a list of all of the cities belonging to the input country
+  pickCities <- function(country){
+    bcg <- c()
+    for(i in seq_along(df$countries)){
+      if(df$countries[i] == country){
+        bcg <- c(bcg, df$cities[i])
+      }
+    }
+    return(bcg)
+  }
+  
+  #Used renderUI to make the selectInput drop down menu for cities, so that it relies on the input country
+  output$cities <- renderUI({
+    selectInput("cities", "Cities",
+                choices = pickCities(input$country))
+  })
+  
+  #Reactive function that returns updated forecast function with coordinates from input city
+  get_ll <- reactive({
+    new_df <- df %>% filter(df$cities == input$cities)
+    new_lat <- new_df[3]
+    new_long <- new_df[4]
+    fc <- forecast(api_key = "bf58d119cf39e2aee063347ad34c45c5", new_lat, new_long)
+    return(fc)
+  })
+
+  #Used renderUI to make the selectInput drop down menu for other weather variables, so that it relied on the input city and the dataframe returned in get_ll()
+  output$weather_res <- renderUI({
+    selectInput("secondvar", "Second Weather Variable",
+                choices = c("None", names(get_ll())[!names(get_ll()) %in% c("summary", "icon","data.summary", "data.icon", "data.precipType", "data.temperature", "data.time")]))
+  })
+  
+  #plots
+  output$plot <- renderPlot({
+    
+    #plot only the weather given time
+    if(input$secondvar == "None"){
+      plot(x = get_ll()$data.time, y = get_ll()$data.temperature, type="l", col="blue", xlab = "Time", 
+           ylab="Temperature")
+      legend("topleft",
+             legend="Temperature",
+             lty=1, col="blue")
+    }
+    
+    #plot the weather and the second variable given time
+    else{
+      par(mar = c(5,5,2,5))
+      plot(x = get_ll()$data.time, y = get_ll()$data.temperature, type="l", col="blue", xlab = "Time",
+           ylab="Temperature")
+      
+      #use par and plot to create a line added to the same plot, with a second y axis as well
+      par(new = T)
+      plot(x = get_ll()$data.time, y = get_ll()[,input$secondvar], type = "l", col = "red", pch=16, axes=F, xlab=NA, ylab=NA, cex=1.2)
+      axis(side = 4)
+      mtext(side = 4, line = 3, paste0(input$secondvar))
+      legend("topleft",
+             legend=c("Temperature", paste0(input$secondvar)),
+             lty=c(1,1), col=c("blue", "red"))
+    }
+  })
+},
+
+options = list(height = 500))
+
+```
